@@ -2,6 +2,24 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 const COOKIE_NAME = "ecotrack_session";
+const CORS_HEADERS = {
+  "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With",
+  "Access-Control-Allow-Credentials": "true",
+  "Access-Control-Max-Age": "86400",
+};
+
+function applyCorsHeaders(response: NextResponse, request: NextRequest) {
+  const origin = request.headers.get("origin");
+
+  response.headers.set("Access-Control-Allow-Origin", origin || "*");
+  response.headers.set("Vary", "Origin");
+  Object.entries(CORS_HEADERS).forEach(([key, value]) => {
+    response.headers.set(key, value);
+  });
+
+  return response;
+}
 
 // Define paths that require authentication
 const PROTECTED_ROUTES = [
@@ -40,6 +58,15 @@ function getJwtPayload(token: string) {
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  if (pathname.startsWith("/api")) {
+    if (request.method === "OPTIONS") {
+      return applyCorsHeaders(new NextResponse(null, { status: 204 }), request);
+    }
+
+    return applyCorsHeaders(NextResponse.next(), request);
+  }
+
   const token = request.cookies.get(COOKIE_NAME)?.value;
   const payload = token ? getJwtPayload(token) : null;
 
@@ -88,12 +115,11 @@ export const config = {
   matcher: [
     /*
      * Match all request paths except for the ones starting with:
-     * - api (API routes)
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
      * - public (public folder assets like icons, images, etc.)
      */
-    "/((?!api|_next/static|_next/image|favicon.ico|.*\\.svg|.*\\.png|.*\\.jpg).*)",
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.svg|.*\\.png|.*\\.jpg).*)",
   ],
 };

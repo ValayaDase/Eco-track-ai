@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { getLocalDateString, formatFriendlyDate } from "@/lib/helpers";
 import { calculateCategoryEmissions } from "@/lib/calculations";
+import { buildMlFeatureVector, type MlPrediction } from "@/lib/ml/features";
 import { useDebounce } from "@/hooks/useDebounce";
 
 // Import LeafletMap dynamically with SSR disabled to prevent window is not defined error
@@ -59,6 +60,7 @@ export default function TrackerPage() {
   const [rollingStats, setRollingStats] = useState<{ mean: number; stdDev: number; count: number } | null>(null);
   const [isConfirmed, setIsConfirmed] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
+  const [livePrediction, setLivePrediction] = useState<MlPrediction | null>(null);
 
   // Local Form state
   const [formData, setFormData] = useState(createEmptyForm);
@@ -70,8 +72,45 @@ export default function TrackerPage() {
     latestFormDataRef.current = formData;
   }, [formData]);
 
-  // Calculate a live, category-level estimate in the client.
-  const liveEmissions = calculateCategoryEmissions({ ...formData, date: selectedDate });
+  // Keep category breakdown local, but source the headline prediction from the ML API.
+  const categoryEmissions = calculateCategoryEmissions({ ...formData, date: selectedDate });
+  const liveEmissions = {
+    ...categoryEmissions,
+    totalEmission: livePrediction?.carbon_footprint_kg ?? categoryEmissions.totalEmission,
+    carbonImpactLevel: livePrediction?.carbon_impact_level ?? categoryEmissions.carbonImpactLevel,
+  };
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function loadPrediction() {
+      try {
+        const res = await fetch("/api/ml/predict", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            features: buildMlFeatureVector({ ...formData, date: selectedDate }),
+          }),
+          signal: controller.signal,
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || "Prediction failed");
+        }
+
+        setLivePrediction(data);
+      } catch (err) {
+        if (!controller.signal.aborted) {
+          console.error("ML prediction error:", err);
+        }
+      }
+    }
+
+    loadPrediction();
+
+    return () => controller.abort();
+  }, [formData, selectedDate]);
 
   // Calculate live Z-score based on rollingStats
   const liveZScore = (() => {
@@ -119,8 +158,14 @@ export default function TrackerPage() {
         } else {
           setFormData(createEmptyForm(data.defaults?.foodType));
         }
+        if (data.emissions) {
+          setLivePrediction({
+            carbon_footprint_kg: data.emissions.totalEmission,
+            carbon_impact_level: data.emissions.carbonImpactLevel,
+          });
+        }
         setSaveStatus("saved");
-      } catch (err) {
+      } catch {
         toast.error("Error loading activity data for this date.");
       } finally {
         setIsLoading(false);
@@ -185,20 +230,37 @@ export default function TrackerPage() {
     if (isLoading || !isDirty) return;
     if (serializeFormData(debouncedFormData) !== serializeFormData(latestFormDataRef.current)) return;
 
-    // Check if debounced state is anomalous
-    const debouncedEmissions = calculateCategoryEmissions({ ...debouncedFormData, date: selectedDate });
-    const z = (!rollingStats || rollingStats.count < 3 || rollingStats.stdDev === 0)
-      ? 0
-      : (debouncedEmissions.totalEmission - rollingStats.mean) / rollingStats.stdDev;
+    async function predictAndSave() {
+      const predictionRes = await fetch("/api/ml/predict", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          features: buildMlFeatureVector({ ...debouncedFormData, date: selectedDate }),
+        }),
+      });
+      const debouncedPrediction = await predictionRes.json();
+      if (!predictionRes.ok) {
+        setSaveStatus("error");
+        console.error("Prediction before save failed:", debouncedPrediction.error);
+        return;
+      }
+      setLivePrediction(debouncedPrediction);
 
-    const debouncedAnomalous = z > 2.5;
+      const z = (!rollingStats || rollingStats.count < 3 || rollingStats.stdDev === 0)
+        ? 0
+        : (debouncedPrediction.carbon_footprint_kg - rollingStats.mean) / rollingStats.stdDev;
 
-    if (debouncedAnomalous && !isConfirmed) {
-      setSaveStatus("warn-pending");
-      return;
+      const debouncedAnomalous = z > 2.5;
+
+      if (debouncedAnomalous && !isConfirmed) {
+        setSaveStatus("warn-pending");
+        return;
+      }
+
+      saveActivity(debouncedFormData, isConfirmed, editVersion.current);
     }
 
-    saveActivity(debouncedFormData, isConfirmed, editVersion.current);
+    predictAndSave();
   }, [debouncedFormData, saveActivity, isLoading, isDirty, isConfirmed, rollingStats, selectedDate]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {

@@ -8,6 +8,8 @@ import { ActivitySchema } from "@/lib/validations";
 import { calculateCategoryEmissions } from "@/lib/calculations";
 import { getLocalDateString } from "@/lib/helpers";
 import { detectOutlier } from "@/lib/validation";
+import { buildMlFeatureVector } from "@/lib/ml/features";
+import { predictCarbon } from "@/lib/ml/predictor";
 
 export const dynamic = "force-dynamic";
 
@@ -49,9 +51,16 @@ export async function GET(req: Request) {
       }
     }
 
-    const emissions = activity
-      ? calculateCategoryEmissions({ ...activity.toObject(), date })
-      : calculateCategoryEmissions({ date, foodType: profile?.dietType || "vegetarian" });
+    const activityInput = activity
+      ? { ...activity.toObject(), date }
+      : { date, foodType: profile?.dietType || "vegetarian" };
+    const categoryEmissions = calculateCategoryEmissions(activityInput);
+    const prediction = predictCarbon(buildMlFeatureVector(activityInput));
+    const emissions = {
+      ...categoryEmissions,
+      totalEmission: prediction.carbon_footprint_kg,
+      carbonImpactLevel: prediction.carbon_impact_level,
+    };
 
     return NextResponse.json(
       {
@@ -70,10 +79,15 @@ export async function GET(req: Request) {
         },
       },
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Get activity log error:", error);
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Something went wrong";
+
     return NextResponse.json(
-      { error: error.message || "Something went wrong" },
+      { error: message },
       { status: 500 }
     );
   }
@@ -100,8 +114,14 @@ export async function POST(req: Request) {
 
     await connectToDatabase();
 
-    // Compute the same auditable category estimate shown by the client.
-    const emissions = calculateCategoryEmissions({ ...validated.data, date });
+    const activityInput = { ...validated.data, date };
+    const categoryEmissions = calculateCategoryEmissions(activityInput);
+    const prediction = predictCarbon(buildMlFeatureVector(activityInput));
+    const emissions = {
+      ...categoryEmissions,
+      totalEmission: prediction.carbon_footprint_kg,
+      carbonImpactLevel: prediction.carbon_impact_level,
+    };
 
     // Perform Outlier Detection (Z-Score analysis)
     const { isOutlier, zScore, mean, stdDev } = await detectOutlier(
@@ -156,10 +176,15 @@ export async function POST(req: Request) {
       emissions,
       zScore,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Save activity log error:", error);
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Something went wrong";
+
     return NextResponse.json(
-      { error: error.message || "Something went wrong" },
+      { error: message },
       { status: 500 }
     );
   }

@@ -1,16 +1,25 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { motion } from "framer-motion";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
-import { Cpu, Leaf, Trees, Zap, Smartphone, RefreshCw, HelpCircle, Loader2 } from "lucide-react";
+import { Cpu, Trees, Zap, Smartphone, RefreshCw, Loader2 } from "lucide-react";
 import { calculateCategoryEmissions } from "@/lib/calculations";
+import { buildMlFeatureVector, type MlPrediction } from "@/lib/ml/features";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
+type ProfileBaseline = {
+  dietType?: string;
+  transportMode?: string;
+  electricityUsage?: string;
+  familySize?: number;
+};
+
 export default function SimulatorPage() {
-  const [profile, setProfile] = useState<any>(null);
+  const [profile, setProfile] = useState<ProfileBaseline | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [baselinePrediction, setBaselinePrediction] = useState<MlPrediction | null>(null);
+  const [simulatedPrediction, setSimulatedPrediction] = useState<MlPrediction | null>(null);
 
   // Simulation Sliders State
   const [simCar, setSimCar] = useState(20); // km/day
@@ -55,7 +64,7 @@ export default function SimulatorPage() {
   }, []);
 
   // Compute Baseline emissions based on user profile
-  const getBaselineInputs = () => {
+  const getBaselineInputs = useCallback(() => {
     if (!profile) {
       return {
         walkingDistance: 2,
@@ -89,20 +98,20 @@ export default function SimulatorPage() {
       electricityUnits: elec === "high" ? 18 : elec === "medium" ? 10 : 5,
       acHours: elec === "high" ? 8 : elec === "medium" ? 4 : 1,
       foodType: profile.dietType || "vegetarian",
-      plasticUsage: profile.familySize > 3 ? 5 : 2,
+      plasticUsage: (profile.familySize ?? 1) > 3 ? 5 : 2,
       shoppingCount: 1 / 7,
       renewableUsagePct: 0,
       screenTimeHours: 4,
-      wasteGeneratedKg: profile.familySize > 3 ? 0.9 : 0.5,
+      wasteGeneratedKg: (profile.familySize ?? 1) > 3 ? 0.9 : 0.5,
       ecoActions: 1,
     };
-  };
+  }, [profile]);
 
-  const baselineInputs = getBaselineInputs();
-  const baselineEmissions = calculateCategoryEmissions(baselineInputs);
+  const baselineInputs = useMemo(() => getBaselineInputs(), [getBaselineInputs]);
+  const baselineCategoryEmissions = calculateCategoryEmissions(baselineInputs);
 
   // Compute Simulated emissions
-  const simulatedInputs = {
+  const simulatedInputs = useMemo(() => ({
     ...baselineInputs,
     carDistance: simCar,
     busDistance: profile?.transportMode === "train" ? 0 : simTransit,
@@ -115,8 +124,76 @@ export default function SimulatorPage() {
     screenTimeHours: simScreen,
     wasteGeneratedKg: simWaste,
     ecoActions: simEcoActions,
+  }), [
+    baselineInputs,
+    profile?.transportMode,
+    simCar,
+    simTransit,
+    simElectricity,
+    simAC,
+    simDiet,
+    simShopping,
+    simRenewable,
+    simScreen,
+    simWaste,
+    simEcoActions,
+  ]);
+  const simulatedCategoryEmissions = calculateCategoryEmissions(simulatedInputs);
+  const baselineEmissions = {
+    ...baselineCategoryEmissions,
+    totalEmission: baselinePrediction?.carbon_footprint_kg ?? baselineCategoryEmissions.totalEmission,
+    carbonImpactLevel: baselinePrediction?.carbon_impact_level ?? baselineCategoryEmissions.carbonImpactLevel,
   };
-  const simulatedEmissions = calculateCategoryEmissions(simulatedInputs);
+  const simulatedEmissions = {
+    ...simulatedCategoryEmissions,
+    totalEmission: simulatedPrediction?.carbon_footprint_kg ?? simulatedCategoryEmissions.totalEmission,
+    carbonImpactLevel: simulatedPrediction?.carbon_impact_level ?? simulatedCategoryEmissions.carbonImpactLevel,
+  };
+
+  useEffect(() => {
+    if (isLoading) return;
+
+    const controller = new AbortController();
+
+    async function predictScenario(input: typeof baselineInputs) {
+      const res = await fetch("/api/ml/predict", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          features: buildMlFeatureVector(input),
+        }),
+        signal: controller.signal,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Prediction failed");
+      }
+      return data as MlPrediction;
+    }
+
+    async function loadPredictions() {
+      try {
+        const [baseline, simulated] = await Promise.all([
+          predictScenario(baselineInputs),
+          predictScenario(simulatedInputs),
+        ]);
+        setBaselinePrediction(baseline);
+        setSimulatedPrediction(simulated);
+      } catch (err) {
+        if (!controller.signal.aborted) {
+          console.error("Simulator prediction error:", err);
+        }
+      }
+    }
+
+    loadPredictions();
+
+    return () => controller.abort();
+  }, [
+    isLoading,
+    baselineInputs,
+    simulatedInputs,
+  ]);
 
   const dailySavings = Math.max(0, baselineEmissions.totalEmission - simulatedEmissions.totalEmission);
   const annualSavings = dailySavings * 365;
@@ -165,7 +242,7 @@ export default function SimulatorPage() {
       setSimShopping(1);
       setSimRenewable(0);
       setSimScreen(4);
-      setSimWaste(p.familySize > 3 ? 0.9 : 0.5);
+      setSimWaste((p.familySize ?? 1) > 3 ? 0.9 : 0.5);
       setSimEcoActions(1);
       toast.success("Simulation parameters reset to your profile baseline!");
     }

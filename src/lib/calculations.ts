@@ -1,4 +1,4 @@
-import type { CarbonImpactLevel } from "@/lib/random-forest";
+import type { CarbonImpactLevel } from "@/lib/ml/features";
 
 export interface CalculateEmissionsInput {
   date?: string;
