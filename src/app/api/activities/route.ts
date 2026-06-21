@@ -59,8 +59,8 @@ export async function GET(req: Request) {
         emissions,
         defaults: { foodType: profile?.dietType || "vegetarian" },
         rollingStats: {
-          mean,
-          stdDev,
+          mean: Number(mean.toFixed(3)),
+          stdDev: Number(stdDev.toFixed(3)),
           count: historyValues.length,
         },
       },

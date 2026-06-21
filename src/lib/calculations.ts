@@ -50,6 +50,10 @@ function nonNegative(value: unknown): number {
   return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
 }
 
+function round(value: number): number {
+  return Number(value.toFixed(3));
+}
+
 function getImpactLevel(total: number): CarbonImpactLevel {
   if (total < 5) return "Low";
   if (total < 10) return "Medium";
@@ -87,13 +91,13 @@ export function calculateCategoryEmissions(input: Partial<CalculateEmissionsInpu
   );
   const reductionMultiplier = 1 - actionReduction;
   const result = {
-    transportEmission: transportEmission * reductionMultiplier,
-    electricityEmission: electricityEmission * reductionMultiplier,
-    foodEmission: foodEmission * reductionMultiplier,
-    wasteEmission: wasteEmission * reductionMultiplier,
-    shoppingEmission: shoppingEmission * reductionMultiplier,
+    transportEmission: round(transportEmission * reductionMultiplier),
+    electricityEmission: round(electricityEmission * reductionMultiplier),
+    foodEmission: round(foodEmission * reductionMultiplier),
+    wasteEmission: round(wasteEmission * reductionMultiplier),
+    shoppingEmission: round(shoppingEmission * reductionMultiplier),
   };
-  const totalEmission = Object.values(result).reduce((sum, value) => sum + value, 0);
+  const totalEmission = round(Object.values(result).reduce((sum, value) => sum + value, 0));
 
   return {
     ...result,

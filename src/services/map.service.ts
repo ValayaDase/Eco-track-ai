@@ -58,7 +58,7 @@ export async function getRoute(
     }
 
     const route = data.routes[0];
-    const distanceKm = route.distance / 1000; // convert meters to km
+    const distanceKm = Number((route.distance / 1000).toFixed(2)); // convert meters to km
 
     // OSRM returns coordinates as [lng, lat], Leaflet polyline expects [lat, lng]
     const geometry: [number, number][] = route.geometry.coordinates.map((coord: [number, number]) => [

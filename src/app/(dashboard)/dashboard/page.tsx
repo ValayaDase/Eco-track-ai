@@ -97,7 +97,7 @@ export default function DashboardPage() {
   // Compute average of last 7 logged days
   const validEmissions = trendData.filter((d: any) => d.Emissions !== null).map((d: any) => d.Emissions);
   const avgWeeklyEmissions = validEmissions.length > 0
-    ? validEmissions.reduce((sum: number, v: number) => sum + v, 0) / validEmissions.length
+    ? Number((validEmissions.reduce((sum: number, v: number) => sum + v, 0) / validEmissions.length).toFixed(1))
     : 14.5;
 
   // Chart 3: Comparisons
@@ -271,7 +271,7 @@ export default function DashboardPage() {
                 {pieData.length > 0 && (
                   <div className="absolute flex flex-col items-center justify-center">
                     <span className="text-[9px] text-muted-foreground uppercase font-bold">Today</span>
-                    <span className="text-lg font-black text-[#08171e]">{todayCarbon} kg</span>
+                    <span className="text-lg font-black text-[#08171e]">{todayCarbon.toFixed(1)} kg</span>
                   </div>
                 )}
               </div>
@@ -420,7 +420,7 @@ export default function DashboardPage() {
                           </p>
                         </div>
                       </div>
-                      <span className="text-[#08171e] font-black">{act.co2} kg CO2</span>
+                      <span className="text-[#08171e] font-black">{act.co2.toFixed(1)} kg CO2</span>
                     </div>
                   ))}
                 </div>

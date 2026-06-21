@@ -94,12 +94,12 @@ export default function LeafletMap({ onApplyRoute }: LeafletMapProps) {
           const { latitude, longitude, speed } = pos.coords;
           
           // speed is in meters/second. Convert to km/h:
-          const speedKmh = speed ? speed * 3.6 : 0.0;
+          const speedKmh = speed ? Number((speed * 3.6).toFixed(1)) : 0.0;
           setGpsSpeed(speedKmh);
           suggestModeFromVelocity(speedKmh);
 
           const localLoc: MapLocation = {
-            name: `Live Location (${latitude}, ${longitude})`,
+            name: `Live Location (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`,
             lat: latitude,
             lng: longitude,
           };
@@ -154,7 +154,7 @@ export default function LeafletMap({ onApplyRoute }: LeafletMapProps) {
       async (pos) => {
         const { latitude, longitude } = pos.coords;
         const localLoc: MapLocation = {
-          name: `Current Location (${latitude}, ${longitude})`,
+          name: `Current Location (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`,
           lat: latitude,
           lng: longitude,
         };
@@ -296,7 +296,7 @@ export default function LeafletMap({ onApplyRoute }: LeafletMapProps) {
           <div className="flex justify-between items-center text-xs">
             <span className="font-bold text-muted-foreground">Velocity:</span>
             <span className="font-black text-[#042b44] bg-white px-2 py-0.5 rounded border border-[#dcecf3]">
-              {currentSpeed !== null ? `${currentSpeed} km/h` : "Telemetry Offline"}
+              {currentSpeed !== null ? `${currentSpeed.toFixed(0)} km/h` : "Telemetry Offline"}
             </span>
           </div>
 

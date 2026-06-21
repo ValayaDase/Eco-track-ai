@@ -38,7 +38,7 @@ def main() -> None:
     print(
         json.dumps(
             {
-                "carbon_footprint_kg": footprint,
+                "carbon_footprint_kg": round(footprint, 2),
                 "carbon_impact_level": LEVELS[level_index] if 0 <= level_index < len(LEVELS) else "Medium",
             },
             indent=2,

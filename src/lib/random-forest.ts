@@ -95,7 +95,7 @@ export function mapInputToVector(input: RandomForestInput): number[] {
 
 export function predictFootprint(input: RandomForestInput): number {
   const vector = mapInputToVector(input);
-  return Math.max(0, predictForest(MODEL.regressor, vector, "regress"));
+  return Number(Math.max(0, predictForest(MODEL.regressor, vector, "regress")).toFixed(3));
 }
 
 export function predictImpactLevel(input: RandomForestInput): CarbonImpactLevel {

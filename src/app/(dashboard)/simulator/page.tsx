@@ -144,8 +144,8 @@ export default function SimulatorPage() {
     },
     {
       name: "Shopping/Waste",
-      Baseline: baselineEmissions.wasteEmission + baselineEmissions.shoppingEmission,
-      Simulated: simulatedEmissions.wasteEmission + simulatedEmissions.shoppingEmission,
+      Baseline: Number((baselineEmissions.wasteEmission + baselineEmissions.shoppingEmission).toFixed(2)),
+      Simulated: Number((simulatedEmissions.wasteEmission + simulatedEmissions.shoppingEmission).toFixed(2)),
     },
     {
       name: "Total Emissions",
@@ -346,7 +346,7 @@ export default function SimulatorPage() {
             <div className="space-y-2">
               <div className="flex justify-between text-xs font-bold">
                 <span className="text-[#4d6673]">Waste Generated</span>
-                <span className="text-[#08171e]">{simWaste} kg/day</span>
+                <span className="text-[#08171e]">{simWaste.toFixed(1)} kg/day</span>
               </div>
               <input
                 type="range"
@@ -414,7 +414,7 @@ export default function SimulatorPage() {
                   Daily Carbon Saved
                 </span>
                 <p className="text-3xl font-extrabold text-[#08171e]">
-                  {dailySavings} <span className="text-sm text-[#4d6673] font-bold">kg</span>
+                  {dailySavings.toFixed(2)} <span className="text-sm text-[#4d6673] font-bold">kg</span>
                 </p>
                 <span className="text-[10px] text-[#4d6673] font-medium">Compared to baseline profile</span>
               </div>
@@ -426,7 +426,7 @@ export default function SimulatorPage() {
                   Annual Savings Projected
                 </span>
                 <p className="text-3xl font-extrabold text-[#08171e]">
-                  {annualSavings} <span className="text-sm text-[#4d6673] font-bold">kg</span>
+                  {annualSavings.toFixed(0)} <span className="text-sm text-[#4d6673] font-bold">kg</span>
                 </p>
                 <span className="text-[10px] text-[#4d6673] font-medium">If maintained for 1 year</span>
               </div>
@@ -439,7 +439,7 @@ export default function SimulatorPage() {
                 </span>
                 <p className="text-3xl font-extrabold text-[#042b44] flex items-center gap-1.5 justify-center">
                   <Trees className="size-6 text-emerald-600" />
-                  {treesPlanted}
+                  {treesPlanted.toFixed(1)}
                 </p>
                 <span className="text-[10px] text-[#4d6673] font-medium">Mature trees planted equivalent</span>
               </div>
@@ -454,7 +454,7 @@ export default function SimulatorPage() {
                 <div>
                   <h4 className="text-xs font-bold text-[#08171e] uppercase tracking-wider">Smartphone charges</h4>
                   <p className="text-xl font-extrabold text-[#042b44] mt-1">
-                    {phoneCharges} Charges
+                    {phoneCharges.toLocaleString(undefined, { maximumFractionDigits: 0 })} Charges
                   </p>
                   <p className="text-[10.5px] text-[#4d6673] mt-0.5 leading-normal font-medium">
                     The amount of emissions saved equals charging a smartphone this many times.
@@ -469,7 +469,7 @@ export default function SimulatorPage() {
                 <div>
                   <h4 className="text-xs font-bold text-[#08171e] uppercase tracking-wider">LED bulb runtime</h4>
                   <p className="text-xl font-extrabold text-[#042b44] mt-1">
-                    {bulbHours} Hours
+                    {bulbHours.toLocaleString(undefined, { maximumFractionDigits: 0 })} Hours
                   </p>
                   <p className="text-[10.5px] text-[#4d6673] mt-0.5 leading-normal font-medium">
                     The saved carbon translates to leaving a standard household bulb running for this duration.

@@ -13,7 +13,7 @@ export async function inferTrend(last14Days: number[]): Promise<number[]> {
   }
 
   if (values.length === 1) {
-    return Array(7).fill(values[0]);
+    return Array(7).fill(Number(values[0].toFixed(2)));
   }
 
   const xMean = (values.length - 1) / 2;
@@ -35,7 +35,7 @@ export async function inferTrend(last14Days: number[]): Promise<number[]> {
   const predictions = Array.from({ length: 7 }, (_, index) => {
     const projected = lastValue + dampedSlope * (index + 1);
     const blended = projected * 0.65 + rollingAverage * 0.35;
-    return Math.max(0, blended);
+    return Number(Math.max(0, blended).toFixed(2));
   });
 
   return predictions;

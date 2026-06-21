@@ -231,7 +231,7 @@ export default function TrackerPage() {
     if (targetFieldName) {
       const nextFormData = {
         ...formData,
-        [targetFieldName]: (formData[targetFieldName as keyof typeof formData] as number) + distanceKm,
+        [targetFieldName]: Number(((formData[targetFieldName as keyof typeof formData] as number) + distanceKm).toFixed(2)),
       };
 
       setFormData(nextFormData);
@@ -328,7 +328,7 @@ export default function TrackerPage() {
                   <div className="space-y-2 select-none">
                     <h4 className="text-xs font-black text-amber-800 uppercase tracking-wider">Data Quality Warning</h4>
                     <p className="text-xs text-amber-700 font-semibold leading-relaxed">
-                      Today&apos;s carbon footprint estimate ({liveEmissions.totalEmission} kg) is significantly higher than your rolling 7-day average of {rollingStats?.mean} kg. (Z-Score: {liveZScore}).
+                      Today&apos;s carbon footprint estimate ({liveEmissions.totalEmission} kg) is significantly higher than your rolling 7-day average of {rollingStats?.mean.toFixed(1)} kg. (Z-Score: {liveZScore.toFixed(2)}).
                     </p>
                     <label className="flex items-center gap-2 text-xs font-bold text-amber-900 cursor-pointer select-none bg-amber-500/10 px-3.5 py-2 rounded-lg border border-amber-500/20 w-fit hover:bg-amber-500/20 transition-all duration-200">
                       <input
@@ -609,13 +609,13 @@ export default function TrackerPage() {
                   <div>
                     <span className="text-muted-foreground block text-[9px] uppercase tracking-wider">Trees / Year</span>
                     <span className="text-emerald-600 font-black text-sm">
-                      {liveEmissions.totalEmission / 20} Trees
+                      {(liveEmissions.totalEmission / 20).toFixed(2)} Trees
                     </span>
                   </div>
                   <div>
                     <span className="text-muted-foreground block text-[9px] uppercase tracking-wider">Phone Charges</span>
                     <span className="text-cyan-600 font-black text-sm">
-                      {liveEmissions.totalEmission / 0.0083} Charges
+                      {(liveEmissions.totalEmission / 0.0083).toFixed(0)} Charges
                     </span>
                   </div>
                 </div>

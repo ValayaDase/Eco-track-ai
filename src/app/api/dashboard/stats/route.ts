@@ -66,18 +66,18 @@ export async function GET() {
       );
     }
 
-    const totalCarbon = records.reduce((sum, record) => sum + (record.totalEmission || 0), 0);
+    const totalCarbon = Number(records.reduce((sum, record) => sum + (record.totalEmission || 0), 0).toFixed(1));
     const todayStr = getLocalDateString();
     const todayRecord = records.find((record) => record.date === todayStr);
-    const todayCarbon = todayRecord?.totalEmission || 0;
+    const todayCarbon = Number((todayRecord?.totalEmission || 0).toFixed(1));
     const todayEmissions = todayRecord
       ? {
-          transportEmission: todayRecord.transportEmission || 0,
-          electricityEmission: todayRecord.electricityEmission || 0,
-          foodEmission: todayRecord.foodEmission || 0,
-          wasteEmission: todayRecord.wasteEmission || 0,
-          shoppingEmission: todayRecord.shoppingEmission || 0,
-          totalEmission: todayRecord.totalEmission || 0,
+          transportEmission: Number((todayRecord.transportEmission || 0).toFixed(3)),
+          electricityEmission: Number((todayRecord.electricityEmission || 0).toFixed(3)),
+          foodEmission: Number((todayRecord.foodEmission || 0).toFixed(3)),
+          wasteEmission: Number((todayRecord.wasteEmission || 0).toFixed(3)),
+          shoppingEmission: Number((todayRecord.shoppingEmission || 0).toFixed(3)),
+          totalEmission: Number((todayRecord.totalEmission || 0).toFixed(3)),
         }
       : emptyEmissions;
 
@@ -86,7 +86,7 @@ export async function GET() {
     const currentWeekAverage = average(currentWeekRecords.map((record) => record.totalEmission || 0));
     const previousWeekAverage = average(previousWeekRecords.map((record) => record.totalEmission || 0));
     const reductionPercent = previousWeekAverage > 0
-      ? ((previousWeekAverage - currentWeekAverage) / previousWeekAverage) * 100
+      ? Number((((previousWeekAverage - currentWeekAverage) / previousWeekAverage) * 100).toFixed(1))
       : 0;
 
     const last14Days = records.slice(-14);

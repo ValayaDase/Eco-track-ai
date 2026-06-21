@@ -107,9 +107,9 @@ def train_and_export() -> None:
             "dayMap": DAY_MAP,
             "levelMap": LEVEL_MAP,
             "metrics": {
-                "regressionMae": float(mean_absolute_error(y_reg_test, reg_predictions)),
-                "regressionR2": float(r2_score(y_reg_test, reg_predictions)),
-                "classificationAccuracy": float(accuracy_score(y_clf_test, clf_predictions)),
+                "regressionMae": round(float(mean_absolute_error(y_reg_test, reg_predictions)), 4),
+                "regressionR2": round(float(r2_score(y_reg_test, reg_predictions)), 4),
+                "classificationAccuracy": round(float(accuracy_score(y_clf_test, clf_predictions)), 4),
             },
         },
         "classifier": [export_tree(tree, is_classifier=True) for tree in classifier.estimators_],
