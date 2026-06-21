@@ -29,7 +29,7 @@ function ChangeMapCenter({ coords }: { coords: [number, number] }) {
 }
 
 interface LeafletMapProps {
-  onApplyRoute: (distanceKm: number, transportMode: string) => void;
+  onApplyRoute: (distanceKm: number, transportMode: string) => void | Promise<void>;
 }
 
 export default function LeafletMap({ onApplyRoute }: LeafletMapProps) {
@@ -47,6 +47,7 @@ export default function LeafletMap({ onApplyRoute }: LeafletMapProps) {
   const [routeGeometry, setRouteGeometry] = useState<[number, number][]>([]);
   const [routeDistance, setRouteDistance] = useState<number | null>(null);
   const [isCalculatingRoute, setIsCalculatingRoute] = useState(false);
+  const [isAddingRoute, setIsAddingRoute] = useState(false);
 
   const [selectedMode, setSelectedMode] = useState<string>("car");
   const [mapCenter, setMapCenter] = useState<[number, number]>([37.7749, -122.4194]); // SF default
@@ -93,12 +94,12 @@ export default function LeafletMap({ onApplyRoute }: LeafletMapProps) {
           const { latitude, longitude, speed } = pos.coords;
           
           // speed is in meters/second. Convert to km/h:
-          const speedKmh = speed ? Number((speed * 3.6).toFixed(1)) : 0.0;
+          const speedKmh = speed ? speed * 3.6 : 0.0;
           setGpsSpeed(speedKmh);
           suggestModeFromVelocity(speedKmh);
 
           const localLoc: MapLocation = {
-            name: `Live Location (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`,
+            name: `Live Location (${latitude}, ${longitude})`,
             lat: latitude,
             lng: longitude,
           };
@@ -153,7 +154,7 @@ export default function LeafletMap({ onApplyRoute }: LeafletMapProps) {
       async (pos) => {
         const { latitude, longitude } = pos.coords;
         const localLoc: MapLocation = {
-          name: `Current Location (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`,
+          name: `Current Location (${latitude}, ${longitude})`,
           lat: latitude,
           lng: longitude,
         };
@@ -231,6 +232,19 @@ export default function LeafletMap({ onApplyRoute }: LeafletMapProps) {
 
   const currentSpeed = getActiveSpeed();
 
+  const addRouteToDailyRecord = async () => {
+    if (routeDistance === null) return;
+
+    setIsAddingRoute(true);
+    try {
+      console.log("Distance:", routeDistance);
+      console.log("Transport:", selectedMode);
+      await onApplyRoute(routeDistance, selectedMode);
+    } finally {
+      setIsAddingRoute(false);
+    }
+  };
+
   return (
     <div className="bg-white border border-[#dcecf3] rounded-2xl p-5 shadow-sm space-y-4 select-none">
       <div className="flex items-center justify-between">
@@ -255,7 +269,7 @@ export default function LeafletMap({ onApplyRoute }: LeafletMapProps) {
       </div>
 
       <p className="text-xs text-muted-foreground font-semibold leading-relaxed">
-        Map your journey manually or activate GPS Telemetry. The system automatically recommends the target emission factor based on your real-time speed.
+        Map your journey manually or activate GPS Telemetry. The system recommends the closest transport mode for the trained prediction model.
       </p>
 
       {/* GPS Speed Simulator Card */}
@@ -282,7 +296,7 @@ export default function LeafletMap({ onApplyRoute }: LeafletMapProps) {
           <div className="flex justify-between items-center text-xs">
             <span className="font-bold text-muted-foreground">Velocity:</span>
             <span className="font-black text-[#042b44] bg-white px-2 py-0.5 rounded border border-[#dcecf3]">
-              {currentSpeed !== null ? `${currentSpeed.toFixed(0)} km/h` : "Telemetry Offline"}
+              {currentSpeed !== null ? `${currentSpeed} km/h` : "Telemetry Offline"}
             </span>
           </div>
 
@@ -529,10 +543,19 @@ export default function LeafletMap({ onApplyRoute }: LeafletMapProps) {
           </div>
 
           <Button
-            onClick={() => onApplyRoute(routeDistance, selectedMode)}
+            onClick={addRouteToDailyRecord}
+            disabled={isAddingRoute}
             className="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2 rounded-xl flex items-center justify-center gap-1 cursor-pointer border-none shadow-sm transition-all"
           >
-            <Check className="size-3.5 stroke-[3px]" /> Apply Distance to Tracker
+            {isAddingRoute ? (
+              <>
+                <Loader2 className="size-3.5 animate-spin" /> Adding to Daily Record...
+              </>
+            ) : (
+              <>
+                <Check className="size-3.5 stroke-[3px]" /> Add to Daily Tracking Record
+              </>
+            )}
           </Button>
         </div>
       )}

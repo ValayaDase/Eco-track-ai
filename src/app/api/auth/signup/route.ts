@@ -57,7 +57,7 @@ export async function POST(req: Request) {
           profileCompleted: user.profileCompleted,
         },
       },
-      { status: 212 } // 201 Created but let's use 200/201. Standard 201 is fine!
+      { status: 201 }
     );
 
     response.cookies.set({

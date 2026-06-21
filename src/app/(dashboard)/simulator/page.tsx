@@ -13,11 +13,16 @@ export default function SimulatorPage() {
   const [isLoading, setIsLoading] = useState(true);
 
   // Simulation Sliders State
-  const [simCar, setSimCar] = useState(15); // km/day
-  const [simTransit, setSimTransit] = useState(10); // km/day
+  const [simCar, setSimCar] = useState(20); // km/day
+  const [simTransit, setSimTransit] = useState(15); // km/day
+  const [simElectricity, setSimElectricity] = useState(10); // kWh/day
   const [simAC, setSimAC] = useState(4); // hours/day
   const [simDiet, setSimDiet] = useState("vegetarian");
   const [simShopping, setSimShopping] = useState(1); // items/week
+  const [simRenewable, setSimRenewable] = useState(0); // percent
+  const [simScreen, setSimScreen] = useState(4); // hours/day
+  const [simWaste, setSimWaste] = useState(0.5); // kg/day
+  const [simEcoActions, setSimEcoActions] = useState(1); // count/day
 
   // Fetch baseline profile info
   useEffect(() => {
@@ -31,9 +36,14 @@ export default function SimulatorPage() {
           // Calibrate simulator defaults based on profile
           const p = data.profile;
           setSimDiet(p.dietType || "vegetarian");
-          setSimCar(p.transportMode === "car" ? 25 : p.transportMode === "bike" ? 15 : 0);
-          setSimTransit(p.transportMode === "bus" || p.transportMode === "train" ? 20 : 0);
+          setSimCar(p.transportMode === "car" ? 25 : 0);
+          setSimTransit(p.transportMode === "bus" ? 15 : p.transportMode === "train" ? 20 : 0);
           setSimAC(p.electricityUsage === "high" ? 8 : p.electricityUsage === "medium" ? 4 : 1);
+          setSimElectricity(p.electricityUsage === "high" ? 18 : p.electricityUsage === "medium" ? 10 : 5);
+          setSimRenewable(0);
+          setSimScreen(4);
+          setSimWaste(p.familySize > 3 ? 0.9 : 0.5);
+          setSimEcoActions(1);
         }
       } catch (err) {
         console.error("Failed to fetch profile baseline:", err);
@@ -52,14 +62,18 @@ export default function SimulatorPage() {
         cyclingDistance: 1,
         bikeDistance: 0,
         carDistance: 20,
-        busDistance: 10,
-        trainDistance: 5,
+        busDistance: 15,
+        trainDistance: 0,
         electricityUnits: 10,
         acHours: 4,
         foodType: "vegetarian",
-        plasticUsage: 3,
-        shoppingCount: 1,
-      };
+      plasticUsage: 3,
+      shoppingCount: 1 / 7,
+      renewableUsagePct: 0,
+      screenTimeHours: 4,
+      wasteGeneratedKg: 0.5,
+      ecoActions: 1,
+    };
     }
 
     const mode = profile.transportMode;
@@ -76,7 +90,11 @@ export default function SimulatorPage() {
       acHours: elec === "high" ? 8 : elec === "medium" ? 4 : 1,
       foodType: profile.dietType || "vegetarian",
       plasticUsage: profile.familySize > 3 ? 5 : 2,
-      shoppingCount: 1,
+      shoppingCount: 1 / 7,
+      renewableUsagePct: 0,
+      screenTimeHours: 4,
+      wasteGeneratedKg: profile.familySize > 3 ? 0.9 : 0.5,
+      ecoActions: 1,
     };
   };
 
@@ -85,17 +103,18 @@ export default function SimulatorPage() {
 
   // Compute Simulated emissions
   const simulatedInputs = {
-    walkingDistance: simCar === 0 && simTransit === 0 ? 4 : 1,
-    cyclingDistance: 0,
-    bikeDistance: 0,
+    ...baselineInputs,
     carDistance: simCar,
-    busDistance: simTransit / 2,
-    trainDistance: simTransit / 2,
-    electricityUnits: simAC > 6 ? 15 : simAC > 2 ? 9 : 4,
+    busDistance: profile?.transportMode === "train" ? 0 : simTransit,
+    trainDistance: profile?.transportMode === "train" ? simTransit : 0,
+    electricityUnits: simElectricity,
     acHours: simAC,
     foodType: simDiet,
-    plasticUsage: simDiet === "vegan" ? 1 : 2,
     shoppingCount: simShopping / 7,
+    renewableUsagePct: simRenewable,
+    screenTimeHours: simScreen,
+    wasteGeneratedKg: simWaste,
+    ecoActions: simEcoActions,
   };
   const simulatedEmissions = calculateCategoryEmissions(simulatedInputs);
 
@@ -125,8 +144,8 @@ export default function SimulatorPage() {
     },
     {
       name: "Shopping/Waste",
-      Baseline: Number((baselineEmissions.wasteEmission + baselineEmissions.shoppingEmission).toFixed(2)),
-      Simulated: Number((simulatedEmissions.wasteEmission + simulatedEmissions.shoppingEmission).toFixed(2)),
+      Baseline: baselineEmissions.wasteEmission + baselineEmissions.shoppingEmission,
+      Simulated: simulatedEmissions.wasteEmission + simulatedEmissions.shoppingEmission,
     },
     {
       name: "Total Emissions",
@@ -139,10 +158,15 @@ export default function SimulatorPage() {
     if (profile) {
       const p = profile;
       setSimDiet(p.dietType || "vegetarian");
-      setSimCar(p.transportMode === "car" ? 25 : p.transportMode === "bike" ? 15 : 0);
-      setSimTransit(p.transportMode === "bus" || p.transportMode === "train" ? 20 : 0);
+      setSimCar(p.transportMode === "car" ? 25 : 0);
+      setSimTransit(p.transportMode === "bus" ? 15 : p.transportMode === "train" ? 20 : 0);
       setSimAC(p.electricityUsage === "high" ? 8 : p.electricityUsage === "medium" ? 4 : 1);
+      setSimElectricity(p.electricityUsage === "high" ? 18 : p.electricityUsage === "medium" ? 10 : 5);
       setSimShopping(1);
+      setSimRenewable(0);
+      setSimScreen(4);
+      setSimWaste(p.familySize > 3 ? 0.9 : 0.5);
+      setSimEcoActions(1);
       toast.success("Simulation parameters reset to your profile baseline!");
     }
   };
@@ -179,7 +203,7 @@ export default function SimulatorPage() {
           {/* Controls Sliders */}
           <div className="lg:col-span-1 bg-white border border-[#dcecf3] rounded-2xl p-6 shadow-sm select-none space-y-6">
             <h3 className="text-xs font-bold text-[#08171e] uppercase tracking-wider pb-2 border-b border-[#dcecf3]">
-              Simulation Sliders
+              Simulation Inputs
             </h3>
 
             {/* Daily Car Commute */}
@@ -215,7 +239,7 @@ export default function SimulatorPage() {
                 onChange={(e) => setSimTransit(parseInt(e.target.value))}
                 className="w-full h-1.5 bg-[#f7fbfd] border border-[#dcecf3] rounded-lg appearance-none cursor-pointer accent-[#096b90]"
               />
-              <span className="text-[10px] text-[#4d6673] block font-medium">Simulates taking bus or train. Lower emissions factor.</span>
+              <span className="text-[10px] text-[#4d6673] block font-medium">Simulates taking bus or train.</span>
             </div>
 
             {/* AC usage */}
@@ -236,6 +260,23 @@ export default function SimulatorPage() {
               <span className="text-[10px] text-[#4d6673] block font-medium">AC is heavy load. Minimizing saves major home emissions.</span>
             </div>
 
+            <div className="space-y-2">
+              <div className="flex justify-between text-xs font-bold">
+                <span className="text-[#4d6673]">Daily Electricity</span>
+                <span className="text-[#08171e]">{simElectricity} kWh</span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="30"
+                step="1"
+                value={simElectricity}
+                onChange={(e) => setSimElectricity(parseInt(e.target.value))}
+                className="w-full h-1.5 bg-[#f7fbfd] border border-[#dcecf3] rounded-lg appearance-none cursor-pointer accent-[#096b90]"
+              />
+              <span className="text-[10px] text-[#4d6673] block font-medium">Household use excluding the AC runtime above.</span>
+            </div>
+
             {/* Diet */}
             <div className="space-y-2">
               <label className="block text-xs font-bold text-[#4d6673] mb-2">Dietary Choice</label>
@@ -249,7 +290,7 @@ export default function SimulatorPage() {
                 <option value="pescatarian">Pescatarian</option>
                 <option value="meat-heavy">Meat-Heavy</option>
               </select>
-              <span className="text-[10px] text-[#4d6673] block font-medium">Plant-based choices carry substantially lower impacts.</span>
+              <span className="text-[10px] text-[#4d6673] block font-medium">Matches the food categories learned from the dataset.</span>
             </div>
 
             {/* Shopping */}
@@ -267,7 +308,71 @@ export default function SimulatorPage() {
                 onChange={(e) => setSimShopping(parseInt(e.target.value))}
                 className="w-full h-1.5 bg-[#f7fbfd] border border-[#dcecf3] rounded-lg appearance-none cursor-pointer accent-[#096b90]"
               />
-              <span className="text-[10px] text-[#4d6673] block font-medium">New clothing/electronics demand major manufacturing carbon.</span>
+              <span className="text-[10px] text-[#4d6673] block font-medium">Included as a daily consumption signal for the model.</span>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex justify-between text-xs font-bold">
+                <span className="text-[#4d6673]">Renewable Energy</span>
+                <span className="text-[#08171e]">{simRenewable}%</span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                step="10"
+                value={simRenewable}
+                onChange={(e) => setSimRenewable(parseInt(e.target.value))}
+                className="w-full h-1.5 bg-[#f7fbfd] border border-[#dcecf3] rounded-lg appearance-none cursor-pointer accent-[#096b90]"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex justify-between text-xs font-bold">
+                <span className="text-[#4d6673]">Screen Time</span>
+                <span className="text-[#08171e]">{simScreen} hours/day</span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="24"
+                step="1"
+                value={simScreen}
+                onChange={(e) => setSimScreen(parseInt(e.target.value))}
+                className="w-full h-1.5 bg-[#f7fbfd] border border-[#dcecf3] rounded-lg appearance-none cursor-pointer accent-[#096b90]"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex justify-between text-xs font-bold">
+                <span className="text-[#4d6673]">Waste Generated</span>
+                <span className="text-[#08171e]">{simWaste} kg/day</span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="3"
+                step="0.1"
+                value={simWaste}
+                onChange={(e) => setSimWaste(parseFloat(e.target.value))}
+                className="w-full h-1.5 bg-[#f7fbfd] border border-[#dcecf3] rounded-lg appearance-none cursor-pointer accent-[#096b90]"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex justify-between text-xs font-bold">
+                <span className="text-[#4d6673]">Eco Actions</span>
+                <span className="text-[#08171e]">{simEcoActions}/day</span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="8"
+                step="1"
+                value={simEcoActions}
+                onChange={(e) => setSimEcoActions(parseInt(e.target.value))}
+                className="w-full h-1.5 bg-[#f7fbfd] border border-[#dcecf3] rounded-lg appearance-none cursor-pointer accent-[#096b90]"
+              />
             </div>
           </div>
 
@@ -276,7 +381,7 @@ export default function SimulatorPage() {
             {/* Emissions Comparison Chart */}
             <div className="bg-white border border-[#dcecf3] rounded-2xl p-6 shadow-sm">
               <h3 className="text-xs font-bold text-[#08171e] uppercase tracking-wider mb-4 pb-2 border-b border-[#dcecf3] select-none">
-                Emissions Comparison: Baseline vs. Simulated (kg CO2e)
+                Baseline vs. Simulated Emissions (kg CO2e)
               </h3>
               <div className="h-72 w-full text-xs">
                 <ResponsiveContainer width="100%" height="100%">
@@ -309,7 +414,7 @@ export default function SimulatorPage() {
                   Daily Carbon Saved
                 </span>
                 <p className="text-3xl font-extrabold text-[#08171e]">
-                  {dailySavings.toFixed(2)} <span className="text-sm text-[#4d6673] font-bold">kg</span>
+                  {dailySavings} <span className="text-sm text-[#4d6673] font-bold">kg</span>
                 </p>
                 <span className="text-[10px] text-[#4d6673] font-medium">Compared to baseline profile</span>
               </div>
@@ -321,7 +426,7 @@ export default function SimulatorPage() {
                   Annual Savings Projected
                 </span>
                 <p className="text-3xl font-extrabold text-[#08171e]">
-                  {annualSavings.toFixed(0)} <span className="text-sm text-[#4d6673] font-bold">kg</span>
+                  {annualSavings} <span className="text-sm text-[#4d6673] font-bold">kg</span>
                 </p>
                 <span className="text-[10px] text-[#4d6673] font-medium">If maintained for 1 year</span>
               </div>
@@ -334,7 +439,7 @@ export default function SimulatorPage() {
                 </span>
                 <p className="text-3xl font-extrabold text-[#042b44] flex items-center gap-1.5 justify-center">
                   <Trees className="size-6 text-emerald-600" />
-                  {treesPlanted.toFixed(1)}
+                  {treesPlanted}
                 </p>
                 <span className="text-[10px] text-[#4d6673] font-medium">Mature trees planted equivalent</span>
               </div>
@@ -349,7 +454,7 @@ export default function SimulatorPage() {
                 <div>
                   <h4 className="text-xs font-bold text-[#08171e] uppercase tracking-wider">Smartphone charges</h4>
                   <p className="text-xl font-extrabold text-[#042b44] mt-1">
-                    {phoneCharges.toLocaleString(undefined, { maximumFractionDigits: 0 })} Charges
+                    {phoneCharges} Charges
                   </p>
                   <p className="text-[10.5px] text-[#4d6673] mt-0.5 leading-normal font-medium">
                     The amount of emissions saved equals charging a smartphone this many times.
@@ -364,7 +469,7 @@ export default function SimulatorPage() {
                 <div>
                   <h4 className="text-xs font-bold text-[#08171e] uppercase tracking-wider">LED bulb runtime</h4>
                   <p className="text-xl font-extrabold text-[#042b44] mt-1">
-                    {bulbHours.toLocaleString(undefined, { maximumFractionDigits: 0 })} Hours
+                    {bulbHours} Hours
                   </p>
                   <p className="text-[10.5px] text-[#4d6673] mt-0.5 leading-normal font-medium">
                     The saved carbon translates to leaving a standard household bulb running for this duration.

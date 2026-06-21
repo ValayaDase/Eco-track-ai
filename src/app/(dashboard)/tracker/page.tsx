@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
@@ -18,7 +18,6 @@ import {
 import { getLocalDateString, formatFriendlyDate } from "@/lib/helpers";
 import { calculateCategoryEmissions } from "@/lib/calculations";
 import { useDebounce } from "@/hooks/useDebounce";
-import { Button } from "@/components/ui/button";
 
 // Import LeafletMap dynamically with SSR disabled to prevent window is not defined error
 const LeafletMap = dynamic(() => import("@/components/tracker/LeafletMap"), {
@@ -31,30 +30,48 @@ const LeafletMap = dynamic(() => import("@/components/tracker/LeafletMap"), {
   ),
 });
 
+const createEmptyForm = (foodType = "vegetarian") => ({
+  walkingDistance: 0,
+  cyclingDistance: 0,
+  bikeDistance: 0,
+  carDistance: 0,
+  busDistance: 0,
+  trainDistance: 0,
+  electricityUnits: 0,
+  acHours: 0,
+  foodType,
+  plasticUsage: 0,
+  shoppingCount: 0,
+  renewableUsagePct: 0,
+  screenTimeHours: 0,
+  wasteGeneratedKg: 0,
+  ecoActions: 0,
+});
+
+function serializeFormData(data: ReturnType<typeof createEmptyForm>) {
+  return JSON.stringify(data);
+}
+
 export default function TrackerPage() {
   const [selectedDate, setSelectedDate] = useState(getLocalDateString());
   const [isLoading, setIsLoading] = useState(true);
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "unsaved" | "error" | "warn-pending">("saved");
   const [rollingStats, setRollingStats] = useState<{ mean: number; stdDev: number; count: number } | null>(null);
   const [isConfirmed, setIsConfirmed] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
 
   // Local Form state
-  const [formData, setFormData] = useState({
-    walkingDistance: 0,
-    cyclingDistance: 0,
-    bikeDistance: 0,
-    carDistance: 0,
-    busDistance: 0,
-    trainDistance: 0,
-    electricityUnits: 0,
-    acHours: 0,
-    foodType: "vegan",
-    plasticUsage: 0,
-    shoppingCount: 0,
-  });
+  const [formData, setFormData] = useState(createEmptyForm);
+  const editVersion = useRef(0);
+  const latestFormDataRef = useRef(formData);
+  const saveQueueRef = useRef(Promise.resolve());
 
-  // Calculate live emissions in client
-  const liveEmissions = calculateCategoryEmissions(formData);
+  useEffect(() => {
+    latestFormDataRef.current = formData;
+  }, [formData]);
+
+  // Calculate a live, category-level estimate in the client.
+  const liveEmissions = calculateCategoryEmissions({ ...formData, date: selectedDate });
 
   // Calculate live Z-score based on rollingStats
   const liveZScore = (() => {
@@ -69,8 +86,10 @@ export default function TrackerPage() {
     async function loadActivity() {
       setIsLoading(true);
       setIsConfirmed(false); // Reset confirmation on date change
+      setIsDirty(false);
+      editVersion.current += 1;
       try {
-        const res = await fetch(`/api/activities?date=${selectedDate}`);
+        const res = await fetch(`/api/activities?date=${selectedDate}`, { cache: "no-store" });
         if (!res.ok) throw new Error("Failed to load records");
 
         const data = await res.json();
@@ -81,32 +100,24 @@ export default function TrackerPage() {
 
         if (data.activity) {
           setFormData({
-            walkingDistance: data.activity.walkingDistance || 0,
-            cyclingDistance: data.activity.cyclingDistance || 0,
-            bikeDistance: data.activity.bikeDistance || 0,
-            carDistance: data.activity.carDistance || 0,
-            busDistance: data.activity.busDistance || 0,
-            trainDistance: data.activity.trainDistance || 0,
-            electricityUnits: data.activity.electricityUnits || 0,
-            acHours: data.activity.acHours || 0,
-            foodType: data.activity.foodType || "vegan",
-            plasticUsage: data.activity.plasticUsage || 0,
-            shoppingCount: data.activity.shoppingCount || 0,
+            walkingDistance: data.activity.walkingDistance ?? 0,
+            cyclingDistance: data.activity.cyclingDistance ?? 0,
+            bikeDistance: data.activity.bikeDistance ?? 0,
+            carDistance: data.activity.carDistance ?? 0,
+            busDistance: data.activity.busDistance ?? 0,
+            trainDistance: data.activity.trainDistance ?? 0,
+            electricityUnits: data.activity.electricityUnits ?? 0,
+            acHours: data.activity.acHours ?? 0,
+            foodType: data.activity.foodType || data.defaults?.foodType || "vegetarian",
+            plasticUsage: data.activity.plasticUsage ?? 0,
+            shoppingCount: data.activity.shoppingCount ?? 0,
+            renewableUsagePct: data.activity.renewableUsagePct ?? 0,
+            screenTimeHours: data.activity.screenTimeHours ?? 0,
+            wasteGeneratedKg: data.activity.wasteGeneratedKg ?? 0,
+            ecoActions: data.activity.ecoActions ?? 0,
           });
         } else {
-          setFormData({
-            walkingDistance: 0,
-            cyclingDistance: 0,
-            bikeDistance: 0,
-            carDistance: 0,
-            busDistance: 0,
-            trainDistance: 0,
-            electricityUnits: 0,
-            acHours: 0,
-            foodType: "vegan",
-            plasticUsage: 0,
-            shoppingCount: 0,
-          });
+          setFormData(createEmptyForm(data.defaults?.foodType));
         }
         setSaveStatus("saved");
       } catch (err) {
@@ -123,44 +134,59 @@ export default function TrackerPage() {
 
   // Save activity callback
   const saveActivity = useCallback(
-    async (dataToSave: typeof formData, confirmSave = false) => {
-      setSaveStatus("saving");
-      try {
-        const res = await fetch("/api/activities", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            date: selectedDate,
-            confirmed: confirmSave,
-            ...dataToSave,
-          }),
-        });
+    async (dataToSave: typeof formData, confirmSave = false, savedVersion = editVersion.current) => {
+      const runSave = async () => {
+        setSaveStatus("saving");
+        try {
+          const res = await fetch("/api/activities", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              date: selectedDate,
+              confirmed: confirmSave,
+              ...dataToSave,
+            }),
+          });
 
-        const json = await res.json();
-        
-        if (!res.ok) {
-          if (json.requiresConfirmation) {
-            setSaveStatus("warn-pending");
-            return;
+          const json = await res.json();
+          
+          if (!res.ok) {
+            if (json.requiresConfirmation) {
+              setSaveStatus("warn-pending");
+              return "warn-pending";
+            }
+            throw new Error(json.error || "Failed to auto-save");
           }
-          throw new Error(json.error || "Failed to auto-save");
-        }
 
-        setSaveStatus("saved");
-      } catch (err: any) {
-        setSaveStatus("error");
-        console.error("Auto-save error:", err);
-      }
+          setSaveStatus("saved");
+          if (savedVersion === editVersion.current) {
+            setIsDirty(false);
+          }
+          return "saved";
+        } catch (err: unknown) {
+          setSaveStatus("error");
+          console.error("Auto-save error:", err);
+          return "error";
+        }
+      };
+
+      const queuedSave = saveQueueRef.current.then(runSave, runSave);
+      saveQueueRef.current = queuedSave.then(
+        () => undefined,
+        () => undefined
+      );
+      return queuedSave;
     },
     [selectedDate]
   );
 
   // Trigger auto-save whenever debounced form state changes (skip initial render load)
   useEffect(() => {
-    if (isLoading) return;
+    if (isLoading || !isDirty) return;
+    if (serializeFormData(debouncedFormData) !== serializeFormData(latestFormDataRef.current)) return;
 
     // Check if debounced state is anomalous
-    const debouncedEmissions = calculateCategoryEmissions(debouncedFormData);
+    const debouncedEmissions = calculateCategoryEmissions({ ...debouncedFormData, date: selectedDate });
     const z = (!rollingStats || rollingStats.count < 3 || rollingStats.stdDev === 0)
       ? 0
       : (debouncedEmissions.totalEmission - rollingStats.mean) / rollingStats.stdDev;
@@ -172,12 +198,14 @@ export default function TrackerPage() {
       return;
     }
 
-    saveActivity(debouncedFormData, isConfirmed);
-  }, [debouncedFormData, saveActivity, isLoading, isConfirmed, rollingStats]);
+    saveActivity(debouncedFormData, isConfirmed, editVersion.current);
+  }, [debouncedFormData, saveActivity, isLoading, isDirty, isConfirmed, rollingStats, selectedDate]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setSaveStatus("unsaved");
+    setIsDirty(true);
+    editVersion.current += 1;
 
     setFormData((prev) => ({
       ...prev,
@@ -186,9 +214,13 @@ export default function TrackerPage() {
   };
 
   // Distance applied from Leaflet map selection
-  const handleApplyRoute = (distanceKm: number, transportMode: string) => {
+  const handleApplyRoute = async (distanceKm: number, transportMode: string) => {
     setSaveStatus("unsaved");
+    setIsDirty(true);
+    editVersion.current += 1;
     const fieldMap: Record<string, string> = {
+      walking: "walkingDistance",
+      cycling: "cyclingDistance",
       car: "carDistance",
       bus: "busDistance",
       train: "trainDistance",
@@ -197,11 +229,21 @@ export default function TrackerPage() {
 
     const targetFieldName = fieldMap[transportMode];
     if (targetFieldName) {
-      setFormData((prev) => ({
-        ...prev,
-        [targetFieldName]: Number((prev[targetFieldName as keyof typeof prev] as number + distanceKm).toFixed(2)),
-      }));
-      toast.success(`Applied ${distanceKm} km to ${transportMode} distance!`);
+      const nextFormData = {
+        ...formData,
+        [targetFieldName]: (formData[targetFieldName as keyof typeof formData] as number) + distanceKm,
+      };
+
+      setFormData(nextFormData);
+      const routeSaveStatus = await saveActivity(nextFormData, isConfirmed, editVersion.current);
+
+      if (routeSaveStatus === "saved") {
+        toast.success(`Added ${distanceKm} km ${transportMode} route to your daily tracking record.`);
+      } else if (routeSaveStatus === "warn-pending") {
+        toast.warning("This route makes today's footprint unusually high. Confirm the entry to save it.");
+      } else {
+        toast.error("Could not add this route to your daily tracking record.");
+      }
     }
   };
 
@@ -215,7 +257,7 @@ export default function TrackerPage() {
             Daily Activity Tracker
           </h1>
           <p className="text-xs text-muted-foreground mt-1 font-semibold select-none">
-            Log your daily habits to compute your carbon footprint and sync with Gemini AI recommendations.
+            Log your daily habits for a live category footprint estimate and personalized recommendations.
           </p>
         </div>
 
@@ -284,9 +326,9 @@ export default function TrackerPage() {
                 >
                   <AlertCircle className="size-5 text-amber-600 shrink-0 mt-0.5" />
                   <div className="space-y-2 select-none">
-                    <h4 className="text-xs font-black text-amber-800 uppercase tracking-wider">⚠️ Data Quality Warning</h4>
+                    <h4 className="text-xs font-black text-amber-800 uppercase tracking-wider">Data Quality Warning</h4>
                     <p className="text-xs text-amber-700 font-semibold leading-relaxed">
-                      Today's carbon footprint estimates ({liveEmissions.totalEmission} kg) are significantly higher than your rolling 7-day average of {rollingStats?.mean.toFixed(1)} kg. (Z-Score: {liveZScore.toFixed(2)}).
+                      Today&apos;s carbon footprint estimate ({liveEmissions.totalEmission} kg) is significantly higher than your rolling 7-day average of {rollingStats?.mean} kg. (Z-Score: {liveZScore}).
                     </p>
                     <label className="flex items-center gap-2 text-xs font-bold text-amber-900 cursor-pointer select-none bg-amber-500/10 px-3.5 py-2 rounded-lg border border-amber-500/20 w-fit hover:bg-amber-500/20 transition-all duration-200">
                       <input
@@ -432,6 +474,69 @@ export default function TrackerPage() {
                     className="w-full bg-white/50 border border-[#dcecf3] rounded-xl py-2 px-3 text-xs text-[#08171e] placeholder-muted-foreground/45 focus:outline-none focus:border-emerald-500 font-bold"
                   />
                 </div>
+
+                <div>
+                  <label className="block text-[9px] font-bold text-[#4d6673] uppercase tracking-wider mb-2 select-none">
+                    Renewable Energy (%)
+                  </label>
+                  <input
+                    type="number"
+                    name="renewableUsagePct"
+                    value={formData.renewableUsagePct || ""}
+                    onChange={handleInputChange}
+                    placeholder="0"
+                    min={0}
+                    max={100}
+                    className="w-full bg-white/50 border border-[#dcecf3] rounded-xl py-2 px-3 text-xs text-[#08171e] placeholder-muted-foreground/45 focus:outline-none focus:border-emerald-500 font-bold"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[9px] font-bold text-[#4d6673] uppercase tracking-wider mb-2 select-none">
+                    Screen Time (Hours)
+                  </label>
+                  <input
+                    type="number"
+                    name="screenTimeHours"
+                    value={formData.screenTimeHours || ""}
+                    onChange={handleInputChange}
+                    placeholder="4"
+                    min={0}
+                    max={24}
+                    className="w-full bg-white/50 border border-[#dcecf3] rounded-xl py-2 px-3 text-xs text-[#08171e] placeholder-muted-foreground/45 focus:outline-none focus:border-emerald-500 font-bold"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[9px] font-bold text-[#4d6673] uppercase tracking-wider mb-2 select-none">
+                    Waste Generated (kg)
+                  </label>
+                  <input
+                    type="number"
+                    name="wasteGeneratedKg"
+                    value={formData.wasteGeneratedKg || ""}
+                    onChange={handleInputChange}
+                    placeholder="0.5"
+                    min={0}
+                    step="0.1"
+                    className="w-full bg-white/50 border border-[#dcecf3] rounded-xl py-2 px-3 text-xs text-[#08171e] placeholder-muted-foreground/45 focus:outline-none focus:border-emerald-500 font-bold"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[9px] font-bold text-[#4d6673] uppercase tracking-wider mb-2 select-none">
+                    Eco Actions (Count)
+                  </label>
+                  <input
+                    type="number"
+                    name="ecoActions"
+                    value={formData.ecoActions || ""}
+                    onChange={handleInputChange}
+                    placeholder="0"
+                    min={0}
+                    className="w-full bg-white/50 border border-[#dcecf3] rounded-xl py-2 px-3 text-xs text-[#08171e] placeholder-muted-foreground/45 focus:outline-none focus:border-emerald-500 font-bold"
+                  />
+                </div>
               </div>
             </motion.div>
 
@@ -462,7 +567,7 @@ export default function TrackerPage() {
                   {liveEmissions.totalEmission} <span className="text-lg font-bold text-muted-foreground">kg</span>
                 </p>
                 <p className="text-xs text-muted-foreground font-semibold">
-                  Logged for {formatFriendlyDate(selectedDate)}
+                  Logged for {formatFriendlyDate(selectedDate)} - {liveEmissions.carbonImpactLevel} impact
                 </p>
               </div>
 
@@ -470,7 +575,7 @@ export default function TrackerPage() {
               <div className="space-y-4 my-8 text-left select-none">
                 {[
                   { label: "Transportation", val: liveEmissions.transportEmission, color: "bg-emerald-600" },
-                  { label: "Electricity & AC", val: liveEmissions.electricityEmission, color: "bg-cyan-600" },
+                  { label: "Electricity, AC & Screens", val: liveEmissions.electricityEmission, color: "bg-cyan-600" },
                   { label: "Food Diet", val: liveEmissions.foodEmission, color: "bg-teal-500" },
                   { label: "Plastic Waste", val: liveEmissions.wasteEmission, color: "bg-sky-400" },
                   { label: "Goods Shopping", val: liveEmissions.shoppingEmission, color: "bg-muted-foreground" },
@@ -504,13 +609,13 @@ export default function TrackerPage() {
                   <div>
                     <span className="text-muted-foreground block text-[9px] uppercase tracking-wider">Trees / Year</span>
                     <span className="text-emerald-600 font-black text-sm">
-                      {(liveEmissions.totalEmission / 20).toFixed(2)} Trees
+                      {liveEmissions.totalEmission / 20} Trees
                     </span>
                   </div>
                   <div>
                     <span className="text-muted-foreground block text-[9px] uppercase tracking-wider">Phone Charges</span>
                     <span className="text-cyan-600 font-black text-sm">
-                      {(liveEmissions.totalEmission / 0.0083).toFixed(0)} Charges
+                      {liveEmissions.totalEmission / 0.0083} Charges
                     </span>
                   </div>
                 </div>

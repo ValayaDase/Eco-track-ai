@@ -55,8 +55,8 @@ export async function detectOutlier(
 
   return {
     isOutlier,
-    zScore: Number(zScore.toFixed(3)),
-    mean: Number(mean.toFixed(3)),
-    stdDev: Number(stdDev.toFixed(3)),
+    zScore,
+    mean,
+    stdDev,
   };
 }

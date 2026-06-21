@@ -2,11 +2,14 @@ import { NextResponse } from "next/server";
 import { connectToDatabase } from "@/lib/db";
 import Activity from "@/models/Activity";
 import CarbonRecord from "@/models/CarbonRecord";
+import Profile from "@/models/Profile";
 import { getUserFromSession } from "@/lib/auth";
 import { ActivitySchema } from "@/lib/validations";
 import { calculateCategoryEmissions } from "@/lib/calculations";
 import { getLocalDateString } from "@/lib/helpers";
 import { detectOutlier } from "@/lib/validation";
+
+export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
   try {
@@ -21,7 +24,10 @@ export async function GET(req: Request) {
     await connectToDatabase();
 
     // Find user's activity for this date
-    const activity = await Activity.findOne({ userId: user._id, date });
+    const [activity, profile] = await Promise.all([
+      Activity.findOne({ userId: user._id, date }),
+      Profile.findOne({ userId: user._id }).select("dietType"),
+    ]);
 
     // Fetch rolling stats (past 7 logged carbon records prior to this date)
     const pastRecords = await CarbonRecord.find({
@@ -43,17 +49,27 @@ export async function GET(req: Request) {
       }
     }
 
-    const emissions = activity ? calculateCategoryEmissions(activity) : calculateCategoryEmissions({});
+    const emissions = activity
+      ? calculateCategoryEmissions({ ...activity.toObject(), date })
+      : calculateCategoryEmissions({ date, foodType: profile?.dietType || "vegetarian" });
 
-    return NextResponse.json({
-      activity,
-      emissions,
-      rollingStats: {
-        mean: Number(mean.toFixed(3)),
-        stdDev: Number(stdDev.toFixed(3)),
-        count: historyValues.length,
+    return NextResponse.json(
+      {
+        activity,
+        emissions,
+        defaults: { foodType: profile?.dietType || "vegetarian" },
+        rollingStats: {
+          mean,
+          stdDev,
+          count: historyValues.length,
+        },
       },
-    });
+      {
+        headers: {
+          "Cache-Control": "no-store, max-age=0",
+        },
+      },
+    );
   } catch (error: any) {
     console.error("Get activity log error:", error);
     return NextResponse.json(
@@ -84,8 +100,8 @@ export async function POST(req: Request) {
 
     await connectToDatabase();
 
-    // Compute live emissions
-    const emissions = calculateCategoryEmissions(validated.data);
+    // Compute the same auditable category estimate shown by the client.
+    const emissions = calculateCategoryEmissions({ ...validated.data, date });
 
     // Perform Outlier Detection (Z-Score analysis)
     const { isOutlier, zScore, mean, stdDev } = await detectOutlier(
@@ -112,7 +128,7 @@ export async function POST(req: Request) {
     // 1. Create or Update daily activity document
     const activity = await Activity.findOneAndUpdate(
       { userId: user._id, date },
-      { userId: user._id, date, ...validated.data },
+      { userId: user._id, date, ...validated.data, carbonImpactLevel: emissions.carbonImpactLevel },
       { new: true, upsert: true }
     );
 
@@ -128,12 +144,13 @@ export async function POST(req: Request) {
         wasteEmission: emissions.wasteEmission,
         shoppingEmission: emissions.shoppingEmission,
         totalEmission: emissions.totalEmission,
+        carbonImpactLevel: emissions.carbonImpactLevel,
       },
       { new: true, upsert: true }
     );
 
     return NextResponse.json({
-      message: "Daily activity logged and emissions computed",
+      message: "Daily activity and emissions estimate saved",
       activity,
       carbonRecord,
       emissions,

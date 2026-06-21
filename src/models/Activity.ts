@@ -66,6 +66,33 @@ const ActivitySchema = new Schema(
       default: 0,
       min: 0,
     },
+    renewableUsagePct: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 100,
+    },
+    screenTimeHours: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 24,
+    },
+    wasteGeneratedKg: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    ecoActions: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    carbonImpactLevel: {
+      type: String,
+      enum: ["Low", "Medium", "High"],
+      default: "Low",
+    },
     completedChallenges: {
       type: [String],
       default: [],

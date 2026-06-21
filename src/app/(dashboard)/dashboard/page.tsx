@@ -47,11 +47,11 @@ export default function DashboardPage() {
       setIsLoading(true);
       try {
         // Fetch challenges (user XP, streak, badges)
-        const chalRes = await fetch("/api/challenges");
+        const chalRes = await fetch("/api/challenges", { cache: "no-store" });
         const chalData = chalRes.ok ? await chalRes.json() : null;
 
         // Fetch dashboard statistics (real user metrics & AI forecasts)
-        const statsRes = await fetch("/api/dashboard/stats");
+        const statsRes = await fetch("/api/dashboard/stats", { cache: "no-store" });
         const statsData = statsRes.ok ? await statsRes.json() : null;
 
         setData({
@@ -97,14 +97,14 @@ export default function DashboardPage() {
   // Compute average of last 7 logged days
   const validEmissions = trendData.filter((d: any) => d.Emissions !== null).map((d: any) => d.Emissions);
   const avgWeeklyEmissions = validEmissions.length > 0
-    ? Number((validEmissions.reduce((sum: number, v: number) => sum + v, 0) / validEmissions.length).toFixed(1))
+    ? validEmissions.reduce((sum: number, v: number) => sum + v, 0) / validEmissions.length
     : 14.5;
 
   // Chart 3: Comparisons
   const comparisonData = [
     { name: "My Today", CO2: todayCarbon },
     { name: "My 7d Avg", CO2: avgWeeklyEmissions },
-    { name: "City Average", CO2: 24.5 },
+    // { name: "City Average", CO2: 24.5 },
   ];
 
   const containerVariants = {
@@ -271,7 +271,7 @@ export default function DashboardPage() {
                 {pieData.length > 0 && (
                   <div className="absolute flex flex-col items-center justify-center">
                     <span className="text-[9px] text-muted-foreground uppercase font-bold">Today</span>
-                    <span className="text-lg font-black text-[#08171e]">{todayCarbon.toFixed(1)} kg</span>
+                    <span className="text-lg font-black text-[#08171e]">{todayCarbon} kg</span>
                   </div>
                 )}
               </div>
@@ -420,7 +420,7 @@ export default function DashboardPage() {
                           </p>
                         </div>
                       </div>
-                      <span className="text-[#08171e] font-black">{act.co2.toFixed(1)} kg CO2</span>
+                      <span className="text-[#08171e] font-black">{act.co2} kg CO2</span>
                     </div>
                   ))}
                 </div>

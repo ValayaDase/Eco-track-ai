@@ -62,4 +62,8 @@ export const ActivitySchema = z.object({
     foodType: z.enum(["vegan", "vegetarian", "pescatarian", "meat-heavy"]),
     plasticUsage: z.coerce.number().min(0, "Count cannot be negative"),
     shoppingCount: z.coerce.number().min(0, "Count cannot be negative"),
+    renewableUsagePct: z.coerce.number().min(0, "Renewable usage cannot be negative").max(100, "Cannot exceed 100%"),
+    screenTimeHours: z.coerce.number().min(0, "Screen time cannot be negative").max(24, "Cannot exceed 24 hours"),
+    wasteGeneratedKg: z.coerce.number().min(0, "Waste cannot be negative"),
+    ecoActions: z.coerce.number().min(0, "Eco actions cannot be negative"),
 });

@@ -1,6 +1,7 @@
-import { EMISSION_FACTORS } from "@/constants/emissions";
+import type { CarbonImpactLevel } from "@/lib/random-forest";
 
 export interface CalculateEmissionsInput {
+  date?: string;
   walkingDistance: number;
   cyclingDistance: number;
   bikeDistance: number;
@@ -12,57 +13,91 @@ export interface CalculateEmissionsInput {
   foodType: string;
   plasticUsage: number;
   shoppingCount: number;
+  renewableUsagePct: number;
+  screenTimeHours: number;
+  wasteGeneratedKg: number;
+  ecoActions: number;
+}
+
+// Operational factors in kg CO2e. Explicit factors keep every input's effect
+// continuous and auditable instead of hiding changes behind tree split points.
+export const EMISSION_FACTORS = {
+  transportPerKm: {
+    walking: 0,
+    cycling: 0,
+    bike: 0.113,
+    car: 0.171,
+    bus: 0.096,
+    train: 0.035,
+  },
+  gridElectricityPerKwh: 0.475,
+  acKwhPerHour: 1.5,
+  screenKwhPerHour: 0.06,
+  foodPerDay: {
+    vegan: 1.8,
+    vegetarian: 2.4,
+    pescatarian: 3.6,
+    "meat-heavy": 7.5,
+  },
+  plasticItem: 0.05,
+  generalWastePerKg: 0.46,
+  purchasedItem: 6,
+  ecoActionReduction: 0.02,
+} as const;
+
+function nonNegative(value: unknown): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+}
+
+function getImpactLevel(total: number): CarbonImpactLevel {
+  if (total < 5) return "Low";
+  if (total < 10) return "Medium";
+  return "High";
 }
 
 export function calculateCategoryEmissions(input: Partial<CalculateEmissionsInput>) {
-  const walking = Number(input.walkingDistance) || 0;
-  const cycling = Number(input.cyclingDistance) || 0;
-  const bike = Number(input.bikeDistance) || 0;
-  const car = Number(input.carDistance) || 0;
-  const bus = Number(input.busDistance) || 0;
-  const train = Number(input.trainDistance) || 0;
+  const renewableShare = Math.min(100, nonNegative(input.renewableUsagePct)) / 100;
+  const gridShare = 1 - renewableShare;
 
-  const electricity = Number(input.electricityUnits) || 0;
-  const ac = Number(input.acHours) || 0;
-
-  const foodType = input.foodType || "vegan";
-  const plastic = Number(input.plasticUsage) || 0;
-  const shopping = Number(input.shoppingCount) || 0;
-
-  // 1. Transport Emissions
   const transportEmission =
-    walking * EMISSION_FACTORS.transport.walking +
-    cycling * EMISSION_FACTORS.transport.cycling +
-    bike * EMISSION_FACTORS.transport.bike +
-    car * EMISSION_FACTORS.transport.car +
-    bus * EMISSION_FACTORS.transport.bus +
-    train * EMISSION_FACTORS.transport.train;
+    nonNegative(input.walkingDistance) * EMISSION_FACTORS.transportPerKm.walking +
+    nonNegative(input.cyclingDistance) * EMISSION_FACTORS.transportPerKm.cycling +
+    nonNegative(input.bikeDistance) * EMISSION_FACTORS.transportPerKm.bike +
+    nonNegative(input.carDistance) * EMISSION_FACTORS.transportPerKm.car +
+    nonNegative(input.busDistance) * EMISSION_FACTORS.transportPerKm.bus +
+    nonNegative(input.trainDistance) * EMISSION_FACTORS.transportPerKm.train;
 
-  // 2. Electricity/AC Emissions
-  const electricityEmission =
-    electricity * EMISSION_FACTORS.electricity.perKwh +
-    ac * EMISSION_FACTORS.electricity.acPerHour;
+  const electricityKwh =
+    nonNegative(input.electricityUnits) +
+    Math.min(24, nonNegative(input.acHours)) * EMISSION_FACTORS.acKwhPerHour +
+    Math.min(24, nonNegative(input.screenTimeHours)) * EMISSION_FACTORS.screenKwhPerHour;
+  const electricityEmission = electricityKwh * EMISSION_FACTORS.gridElectricityPerKwh * gridShare;
 
-  // 3. Food Emissions (3 meals a day base scale)
-  const foodFactor = EMISSION_FACTORS.food[foodType as keyof typeof EMISSION_FACTORS.food] || 0.6;
-  const foodEmission = foodFactor * 3;
+  const foodType = input.foodType as keyof typeof EMISSION_FACTORS.foodPerDay;
+  const foodEmission = EMISSION_FACTORS.foodPerDay[foodType] ?? 0;
+  const wasteEmission =
+    nonNegative(input.plasticUsage) * EMISSION_FACTORS.plasticItem +
+    nonNegative(input.wasteGeneratedKg) * EMISSION_FACTORS.generalWastePerKg;
+  const shoppingEmission = nonNegative(input.shoppingCount) * EMISSION_FACTORS.purchasedItem;
 
-  // 4. Waste / Plastic Emissions
-  const wasteEmission = plastic * EMISSION_FACTORS.waste.perPlasticItem;
-
-  // 5. Shopping Emissions
-  const shoppingEmission = shopping * EMISSION_FACTORS.shopping.perItem;
-
-  // 6. Grand Total
-  const totalEmission =
-    transportEmission + electricityEmission + foodEmission + wasteEmission + shoppingEmission;
+  const actionReduction = Math.min(
+    0.2,
+    nonNegative(input.ecoActions) * EMISSION_FACTORS.ecoActionReduction
+  );
+  const reductionMultiplier = 1 - actionReduction;
+  const result = {
+    transportEmission: transportEmission * reductionMultiplier,
+    electricityEmission: electricityEmission * reductionMultiplier,
+    foodEmission: foodEmission * reductionMultiplier,
+    wasteEmission: wasteEmission * reductionMultiplier,
+    shoppingEmission: shoppingEmission * reductionMultiplier,
+  };
+  const totalEmission = Object.values(result).reduce((sum, value) => sum + value, 0);
 
   return {
-    transportEmission: Number(transportEmission.toFixed(3)),
-    electricityEmission: Number(electricityEmission.toFixed(3)),
-    foodEmission: Number(foodEmission.toFixed(3)),
-    wasteEmission: Number(wasteEmission.toFixed(3)),
-    shoppingEmission: Number(shoppingEmission.toFixed(3)),
-    totalEmission: Number(totalEmission.toFixed(3)),
+    ...result,
+    totalEmission,
+    carbonImpactLevel: getImpactLevel(totalEmission),
   };
 }

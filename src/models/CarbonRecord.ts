@@ -35,6 +35,11 @@ const CarbonRecordSchema = new Schema(
       type: Number,
       default: 0,
     },
+    carbonImpactLevel: {
+      type: String,
+      enum: ["Low", "Medium", "High"],
+      default: "Low",
+    },
   },
   {
     timestamps: true,

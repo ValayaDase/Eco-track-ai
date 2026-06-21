@@ -182,7 +182,7 @@ export default function LandingPage() {
           {[
             {
               q: "How are my carbon footprint calculations generated?",
-              a: "EcoTrack AI estimates your carbon footprint using standardized emission factors for transportation, electricity usage, dietary habits, and lifestyle activities. The platform instantly recalculates your emissions whenever you update your activities, helping you understand the environmental impact of your daily choices."
+              a: "EcoTrack AI estimates your carbon footprint with a Random Forest model trained on the personal carbon footprint behavior dataset. The platform instantly recalculates predictions whenever you update your activity, energy, waste, food, and lifestyle inputs."
             },
             {
               q: "Do I need to manually enter all my activities every day?",
