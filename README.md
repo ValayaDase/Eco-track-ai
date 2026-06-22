@@ -2,6 +2,8 @@
 
 EcoTrack AI is a carbon footprint awareness platform that helps individuals understand, track, and reduce their daily emissions through quick lifestyle logging, personalized insights, simulations, and simple behavior-change challenges.
 
+Live Link: https://eco-track-ai-mu.vercel.app/
+
 ## Solution Overview
 
 The platform is designed around one loop: measure today's footprint, understand the biggest driver, choose a realistic action, and reinforce the habit over time.
